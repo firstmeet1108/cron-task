@@ -1,5 +1,7 @@
 import { Context, Schema } from "koishi";
-import { extractFromXml } from '@extractus/feed-extractor'
+import { extractFromXml } from "@extractus/feed-extractor";
+import dayjs from "dayjs";
+import { getMsg } from "./test";
 export const name = "rss";
 declare module "koishi" {
   interface Tables {
@@ -38,16 +40,25 @@ export function apply(ctx: Context) {
   ctx
     .command("cron-task", "定时任务管理", { authority: 1 })
     .action(async ({ session }) => {
-      const data = await ctx.http.get("https://rsshub.app/bilibili/weekly", {
-        proxy: {
-          host: "127.0.0.1",
-          port: 7890,
-        },
-      });
+      console.log("cron-task");
+      // 获得 数据对象result
+      const data = await ctx.http.get(
+        "https://rsshub.app/epicgames/freegames/zh"
+      );
       const decoder = new TextDecoder("utf-8");
-      const text = decoder.decode(data);
-      const result = extractFromXml(text);
+      const result = extractFromXml(decoder.decode(data));
       console.log(result);
+
+      // 使用对象生成文本
+      let massages = [`${result.title}\n`];
+      for (const item of result.entries) {
+        massages.push(
+          `\n${item.title}\n${item.link}\n${item.description}\n${dayjs(
+            item.published
+          ).format("YYYY-MM-DD HH:mm:ss")}\n`
+        );
+      }
+      session.send(getMsg(massages));
     });
 }
 

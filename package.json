@@ -19,6 +19,6 @@
   },
   "dependencies": {
     "@extractus/feed-extractor": "^7.1.2",
-    "xml-js": "^1.6.11"
+    "dayjs": "^1.11.11"
   }
 }
