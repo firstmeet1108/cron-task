@@ -1,5 +1,6 @@
 import { Context, Schema } from 'koishi';
-import { generateOptionsContent } from './ganeraterMap';
+import { commandGeneratorMap } from './ganeraterMap';
+import { xml2js } from 'xml-js';
 
 export const name = 'rss';
 declare module 'koishi' {
@@ -15,20 +16,21 @@ interface CronTask {
   create_time: Date;
 }
 
-interface CommandOptionsHandlerMap {
-  list?: (target_id: number, ctx: Context) => Promise<(keyof taskHandlerMap)[]>;
-  all?: (ctx: Context) => void;
-}
-
-export interface taskHandlerMap {
-  epic: () => void;
+export interface TaskHandlerMap {
+  epic: (userContext: UserContext, ctx: Context) => any;
   steam: () => void;
   github: () => void;
 }
 
-const taskHandlerMap: taskHandlerMap = {
-  epic: () => {
-    console.log('EPIC');
+const taskHandlerMap: TaskHandlerMap = {
+  epic: async ({}, ctx) => {
+    const data = await ctx.http.get(
+      'https://rsshub.app/epicgames/freegames/zh-CN'
+    );
+    const decoder = new TextDecoder('utf-8');
+    const result = (xml2js(decoder.decode(data), { compact: true }) as any).rss
+      .channel;
+    return result;
   },
   steam: () => {
     console.log('STEAM');
@@ -38,42 +40,77 @@ const taskHandlerMap: taskHandlerMap = {
   },
 };
 
+type UserContext = {
+  target_id: number;
+  task_name: keyof TaskHandlerMap;
+  option: keyof CommandOptionsHandlerMap;
+};
+
+interface CommandOptionsHandlerMap {
+  subscribe: (
+    userContext: UserContext,
+    ctx: Context
+  ) => Promise<{ type: 'subscribe'; data: null }>;
+  list: (
+    userContext: UserContext,
+    ctx: Context
+  ) => Promise<{ type: 'list'; data: (keyof TaskHandlerMap)[] }>;
+  all: () => Promise<{ type: 'all'; data: (keyof TaskHandlerMap)[] }>;
+}
+
 const commandOptionsHandlerMap: CommandOptionsHandlerMap = {
-  list: async (target_id, ctx) => {
-    // 获取订阅列表
+  subscribe: async ({ target_id, task_name }, ctx) => {
+    // 订阅
+    const res = await ctx.database.create('cron_task', {
+      name: task_name,
+      target_id,
+      create_time: new Date(),
+    });
+    return {
+      type: 'subscribe',
+      data: null,
+    };
+  },
+  list: async ({ target_id }, ctx) => {
+    // 用户订阅的内容列表
     const tasks = await ctx.database
       .select('cron_task', {
         target_id,
       })
       .groupBy('name')
       .execute();
-    return tasks.map((task) => task.name) as (keyof taskHandlerMap)[] | null;
-  }, // 用户订阅的内容列表
+    return {
+      type: 'list',
+      data: tasks.map((task) => task.name) as (keyof TaskHandlerMap)[] | null,
+    };
+  },
   all: async () => {
-    return Object.keys(taskHandlerMap);
-  }, // 所有可订阅的内容列表
+    // 所有可订阅的内容列表
+    return { type: 'all', data: getKeys(taskHandlerMap) };
+  },
 };
 
 export interface Config {}
 
 export const Config: Schema<Config> = Schema.object({});
 
-export function apply(ctx: Context) {
+export async function apply(ctx: Context) {
   // write your plugin here
-  ctx.model.extend('cron_task', {
-    id: {
-      type: 'unsigned',
+  ctx.model.extend(
+    'cron_task',
+    {
+      id: 'unsigned',
+      name: 'string',
+      target_id: 'integer',
+      create_time: 'timestamp',
     },
-    name: {
-      type: 'string',
-    },
-    target_id: 'integer',
-    create_time: 'timestamp',
-  });
+    {
+      autoInc: true,
+      unique: [['name', 'target_id']],
+    }
+  );
   ctx
-    .command('subscribe <task_name:string>', '定时任务管理', {
-      authority: 2,
-    })
+    .command('subscribe <task_name:string>', '定时任务管理')
     .option('list', '-l') // 任务列表
     .option('all', '-a') // 所有任务
     .alias('sub')
@@ -83,6 +120,12 @@ export function apply(ctx: Context) {
         if (isEmptyObject(options) && task_name === undefined) {
           // 未输入 任务名 和 选项
           throw new Error('请输入订阅内容');
+        } else if (
+          isEmptyObject(options) &&
+          !Object.keys(taskHandlerMap).includes(task_name)
+        ) {
+          // 选项为空 且 任务名不在任务列表中
+          throw new Error('未知任务名, 使用 sub -a 查看所有任务');
         } else if (Object.keys(options).length > 1) {
           // 输入多个选项
           throw new Error('请勿输入多个选项');
@@ -103,74 +146,46 @@ export function apply(ctx: Context) {
 
       // 获取必要数据
       const messageData = session.event._data;
-      const target_id: number & Context = // 群号或者用户号
+      const target_id: number & Context =
         messageData.message_type === 'group'
           ? messageData.group_id
           : messageData.user_id;
-      // 当前可用数据
-      // target_id 群号或者用户号
-      // task_name 任务名
-      // options 选项
-      // 选项动作
-      if (!isEmptyObject(options)) {
-        const option: keyof CommandOptionsHandlerMap = Object.keys(
-          options
-        )[0] as keyof CommandOptionsHandlerMap; // 用户选择
-        const listArr = await commandOptionsHandlerMap[option](target_id, ctx);
-        session.send(generateOptionsContent(listArr));
-        return;
-      }
 
-      // 任务动作
+      const option: keyof CommandOptionsHandlerMap = (
+        Object.keys(options).length === 1
+          ? Object.keys(options)[0]
+          : 'subscribe'
+      ) as keyof CommandOptionsHandlerMap;
+
+      // 当前可用数据
+      const userContext: UserContext = {
+        target_id, // 群号或者用户号
+        task_name: task_name as keyof TaskHandlerMap, // 任务名
+        option, // 选项
+      };
+      // 希望得到 待渲染数据data
+      const toRenderData = await commandOptionsHandlerMap[option](
+        userContext,
+        ctx
+      );
+      const toSendData = commandGeneratorMap[option](toRenderData.data);
+      session.send(toSendData);
     });
 }
+// 任务动作
+// toRenderData = await taskHandlerMap[task_name](userContext, ctx);
+// const toSendData = generateContent(toRenderData);
+// session.send(toSendData);
 
 // 获得 数据对象result
-// const data = await ctx.http.get(
-//   "https://rsshub.app/epicgames/freegames/zh-CN"
-// );
-// const decoder = new TextDecoder("utf-8");
-// const result = xml2js(decoder.decode(data), { compact: true }).rss
-//   .channel;
 
 // const massages = ganerateMsg(result);
 // session.send(massages);
-
-// const taskMap = {
-//   EPIC: function (ctx) {
-//     ctx.cron("0 0 0 * * *", async () => {
-//       const tasks = await ctx.database.get("EPIC", {
-//         name: "EPIC",
-//       });
-//       for (const task of tasks) {
-//         if (task.disabled) continue;
-//         for (const guild of task.guild) {
-//           await ctx.app.bots[0].sendGroupMsg(
-//             +guild,
-//             `执行定时任务：${task.name}`
-//           );
-//         }
-//       }
-//     });
-//   },
-// };
 
 const isEmptyObject = (obj: object): boolean => {
   return Object.keys(obj).length === 0;
 };
 
-type task_name = 'EPIC' | 'STEAM' | 'GITHUB';
-
-const taskMap: {
-  [key in task_name]: () => void;
-} = {
-  EPIC: function () {
-    console.log('EPIC');
-  },
-  STEAM: function () {
-    console.log('STEAM');
-  },
-  GITHUB: function () {
-    console.log('GITHUB');
-  },
+const getKeys = <T extends object>(obj: T): (keyof T)[] => {
+  return Object.keys(obj) as (keyof T)[];
 };

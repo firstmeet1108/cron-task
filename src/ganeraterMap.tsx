@@ -1,9 +1,9 @@
 import { xml2js } from 'xml-js';
 import { h } from 'koishi';
 import dayjs from 'dayjs';
-import { taskHandlerMap } from './index';
+import { TaskHandlerMap } from './index';
 
-export function ganerateMsg(rssObj: any) {
+function ganerateMsg(rssObj: any) {
   const items = rssObj.item.map((item: any) => {
     return (
       <message>
@@ -29,8 +29,12 @@ export function ganerateMsg(rssObj: any) {
   );
 }
 
-export const generateOptionsContent = (
-  listArr: Array<keyof taskHandlerMap> | void
+const generateContent = (toRenderData: any) => {
+  return ganerateMsg(toRenderData);
+};
+
+const generateOptionsContent = (
+  listArr: Array<keyof TaskHandlerMap> | void
 ) => {
   if (!listArr) {
     return <message>当前未订阅任何内容</message>;
@@ -46,3 +50,38 @@ export const generateOptionsContent = (
     </message>
   );
 };
+
+const commandGeneratorMap = {
+  subscribe: () => {
+    return <message>订阅成功</message>;
+  },
+  list: (data: (keyof TaskHandlerMap)[]) => {
+    if (data.length === 0) {
+      return <message>当前未订阅任何内容</message>;
+    }
+    return (
+      <message>
+        <p>当前已订阅的内容：</p>
+        {data.map((item, idx) => (
+          <p>
+            No.{idx} --- {item}
+          </p>
+        ))}
+      </message>
+    );
+  },
+  all: (data: (keyof TaskHandlerMap)[]) => {
+    return (
+      <message>
+        <p>当前可订阅的内容：</p>
+        {data.map((item, idx) => (
+          <p>
+            No.{idx} --- {item}
+          </p>
+        ))}
+      </message>
+    );
+  },
+};
+
+export { commandGeneratorMap };
