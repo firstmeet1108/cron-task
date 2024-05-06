@@ -1,5 +1,5 @@
 import { Context, Schema } from 'koishi';
-import { commandGeneratorMap } from './ganeraterMap';
+import { commandGeneratorMap, cronTaskGeneratorMap } from './ganeraterMap';
 import { xml2js } from 'xml-js';
 
 export const name = 'rss';
@@ -18,26 +18,26 @@ interface CronTask {
 
 export interface TaskHandlerMap {
   epic: (userContext: UserContext, ctx: Context) => any;
-  steam: () => void;
-  github: () => void;
+  // steam: () => void;
+  // github: () => void;
 }
 
 const taskHandlerMap: TaskHandlerMap = {
   epic: async ({}, ctx) => {
-    const data = await ctx.http.get(
-      'https://rsshub.app/epicgames/freegames/zh-CN'
+    const toRenderData = await getRssData(
+      'https://rsshub.app/epicgames/freegames/zh-CN',
+      ctx
     );
-    const decoder = new TextDecoder('utf-8');
-    const result = (xml2js(decoder.decode(data), { compact: true }) as any).rss
-      .channel;
-    return result;
+    const toSendData = cronTaskGeneratorMap['epic'](toRenderData);
+
+    return toRenderData;
   },
-  steam: () => {
-    console.log('STEAM');
-  },
-  github: () => {
-    console.log('GITHUB');
-  },
+  // steam: () => {
+  //   console.log('STEAM');
+  // },
+  // github: () => {
+  //   console.log('GITHUB');
+  // },
 };
 
 type UserContext = {
@@ -95,7 +95,7 @@ export interface Config {}
 export const Config: Schema<Config> = Schema.object({});
 
 export async function apply(ctx: Context) {
-  // write your plugin here
+  // 创建数据库
   ctx.model.extend(
     'cron_task',
     {
@@ -109,6 +109,7 @@ export async function apply(ctx: Context) {
       unique: [['name', 'target_id']],
     }
   );
+  // 命令模块
   ctx
     .command('subscribe <task_name:string>', '定时任务管理')
     .option('list', '-l') // 任务列表
@@ -171,6 +172,32 @@ export async function apply(ctx: Context) {
       const toSendData = commandGeneratorMap[option](toRenderData.data);
       session.send(toSendData);
     });
+  ctx
+    .command('test', 'test', {
+      authority: 2,
+    })
+    .action(async ({ session }) => {
+      console.log('test');
+      const onebot = ctx.bots[0];
+      await onebot.sendPrivateMessage('2022742378', 'test');
+      // for (const task_name in taskHandlerMap) {
+      //   console.log(task_name);
+      //   const target_id_arr = await ctx.database.get(
+      //     'cron_task',
+      //     {
+      //       name: task_name,
+      //     },
+      //     ['target_id']
+      //   );
+      //   target_id_arr
+      //     .map((e) => e.target_id.toString())
+      //     .forEach(async (e) => {
+      //       console.log(e);
+      //       await onebot.sendMessage(e, 'epic');
+      //     });
+      // }
+    });
+  // 定时任务模块
 }
 // 任务动作
 // toRenderData = await taskHandlerMap[task_name](userContext, ctx);
@@ -188,4 +215,12 @@ const isEmptyObject = (obj: object): boolean => {
 
 const getKeys = <T extends object>(obj: T): (keyof T)[] => {
   return Object.keys(obj) as (keyof T)[];
+};
+
+const getRssData = async (url: string, ctx: Context) => {
+  const data = await ctx.http.get(url);
+  const decoder = new TextDecoder('utf-8');
+  const result = (xml2js(decoder.decode(data), { compact: true }) as any).rss
+    .channel;
+  return result;
 };
