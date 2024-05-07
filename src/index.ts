@@ -185,33 +185,30 @@ export async function apply(ctx: Context) {
       const toSendData = commandGeneratorMap[option](toRenderData.data);
       session.send(toSendData);
     });
-  ctx
-    .command('test', 'test', {
-      authority: 2,
-    })
-    .action(async ({ session }) => {
-      const onebot = ctx.bots[0];
-      // taskHandlerMap['epic']({}, ctx);
+  ctx.command('test', 'test').action(async ({ session }) => {
+    // const onebot = ctx.bots[0];
+    console.log(123);
+    // taskHandlerMap['epic']({}, ctx);
 
-      // await onebot.sendPrivateMessage('2022742378', 'test');
-      // for (const task_name in taskHandlerMap) {
-      //   const dataList = await ctx.database.get(
-      //     'cron_task',
-      //     {
-      //       name: task_name,
-      //     },
-      //     ['target_id', 'type']
-      //   );
-      //   console.log(dataList);
-      //   dataList.forEach(async (e) => {
-      //     if (e.type === 'group') {
-      //       await onebot.sendMessage(e.target_id, 'epic');
-      //     } else {
-      //       await onebot.sendPrivateMessage(e.target_id, 'epic');
-      //     }
-      //   });
-      // }
-    });
+    // await onebot.sendPrivateMessage('2022742378', 'test');
+    // for (const task_name in taskHandlerMap) {
+    //   const dataList = await ctx.database.get(
+    //     'cron_task',
+    //     {
+    //       name: task_name,
+    //     },
+    //     ['target_id', 'type']
+    //   );
+    //   console.log(dataList);
+    //   dataList.forEach(async (e) => {
+    //     if (e.type === 'group') {
+    //       await onebot.sendMessage(e.target_id, 'epic');
+    //     } else {
+    //       await onebot.sendPrivateMessage(e.target_id, 'epic');
+    //     }
+    //   });
+    // }
+  });
 
   // 定时任务模块
   // 0 0 12 ? * FRI 每周五中午12点
