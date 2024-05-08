@@ -2,9 +2,8 @@ import { Context, Schema } from 'koishi';
 import {} from 'koishi-plugin-cron';
 import { commandGeneratorMap, cronTaskGeneratorMap } from './ganeraterMap';
 import { xml2js } from 'xml-js';
-import dayjs from 'dayjs';
 
-export const name = 'rss';
+export const name = 'cron-task';
 declare module 'koishi' {
   interface Tables {
     cron_task: CronTask;
